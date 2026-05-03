@@ -46,6 +46,7 @@ const (
 	GitRepositoryIndexKey   = ".metadata.gitRepository"
 	BucketIndexKey          = ".metadata.bucket"
 	OCIRepositoryIndexKey   = ".metadata.ociRepository"
+	DependsOnIndexKey       = ".metadata.dependsOn"
 	BreakTheGlassAnnotation = "break-the-glass.tf-controller/requestedAt"
 )
 

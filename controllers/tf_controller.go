@@ -680,6 +680,13 @@ func (r *TerraformReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentRe
 		return fmt.Errorf("failed setting index fields: %w", err)
 	}
 
+	// Index the Terraforms by the Terraforms they depend on, so that when a
+	// dependency becomes ready we can immediately enqueue every dependent.
+	if err := mgr.GetCache().IndexField(context.TODO(), &infrav1.Terraform{}, infrav1.DependsOnIndexKey,
+		IndexTerraformByDependsOn); err != nil {
+		return fmt.Errorf("failed setting index fields: %w", err)
+	}
+
 	// Configure the retryable http client used for fetching artifacts.
 	// By default, it retries 10 times within a 3.5 minutes window.
 	httpClient := retryablehttp.NewClient()
@@ -715,6 +722,11 @@ func (r *TerraformReconciler) SetupWithManager(mgr ctrl.Manager, maxConcurrentRe
 			&corev1.Secret{},
 			handler.EnqueueRequestForOwner(mgr.GetScheme(), mgr.GetRESTMapper(), &infrav1.Terraform{}, handler.OnlyControllerOwner()),
 			builder.WithPredicates(SecretDeletePredicate{}),
+		).
+		Watches(
+			&infrav1.Terraform{},
+			handler.EnqueueRequestsFromMapFunc(r.requestsForDependentsOf),
+			builder.WithPredicates(TerraformDependencyReadyTransitionPredicate{}),
 		).
 		WithOptions(controller.Options{
 			MaxConcurrentReconciles: maxConcurrentReconciles,
@@ -835,6 +847,31 @@ func (r *TerraformReconciler) requestsForRevisionChangeOf(indexKey string) handl
 
 }
 
+// requestsForDependentsOf is invoked when a Terraform transitions to
+// ready-and-converged. It looks up every Terraform that lists this one in
+// Spec.DependsOn (via the DependsOnIndexKey index) and enqueues a reconcile
+// request for each, so dependents react immediately instead of waiting for
+// their next RequeueAfter tick.
+func (r *TerraformReconciler) requestsForDependentsOf(ctx context.Context, obj client.Object) []reconcile.Request {
+	log := ctrl.LoggerFrom(ctx)
+
+	var list infrav1.TerraformList
+	if err := r.List(ctx, &list, client.MatchingFields{
+		infrav1.DependsOnIndexKey: client.ObjectKeyFromObject(obj).String(),
+	}); err != nil {
+		log.Error(err, "failed to list dependents")
+		return nil
+	}
+
+	reqs := make([]reconcile.Request, 0, len(list.Items))
+	for _, t := range list.Items {
+		reqs = append(reqs, reconcile.Request{
+			NamespacedName: types.NamespacedName{Name: t.Name, Namespace: t.Namespace},
+		})
+	}
+	return reqs
+}
+
 func (r *TerraformReconciler) getSource(ctx context.Context, terraform *infrav1.Terraform) (sourcev1.Source, error) {
 	var sourceObj sourcev1.Source
 
@@ -949,4 +986,29 @@ func (r *TerraformReconciler) IndexBy(kind string) func(o client.Object) []strin
 
 		return nil
 	}
+}
+
+// IndexTerraformByDependsOn returns the namespaced names of every Terraform
+// listed in Spec.DependsOn, defaulting the namespace to the depender's own
+// namespace when not set. The resulting index lets us look up every
+// Terraform that depends on a given dependency in O(1).
+func IndexTerraformByDependsOn(o client.Object) []string {
+	terraform, ok := o.(*infrav1.Terraform)
+	if !ok {
+		panic(fmt.Sprintf("Expected a Terraform, got %T", o))
+	}
+
+	if len(terraform.Spec.DependsOn) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(terraform.Spec.DependsOn))
+	for _, d := range terraform.Spec.DependsOn {
+		ns := d.Namespace
+		if ns == "" {
+			ns = terraform.GetNamespace()
+		}
+		keys = append(keys, fmt.Sprintf("%s/%s", ns, d.Name))
+	}
+	return keys
 }
