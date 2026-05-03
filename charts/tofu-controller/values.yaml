@@ -134,6 +134,8 @@ runner:
     maxMessageSize: 4
   # -- Timeout for runner-creation (Controller)
   creationTimeout: 5m0s
+  # -- Default deadline for runner gRPC calls when the caller sets none. Caps how long a single RPC may block before returning DeadlineExceeded so the reconcile can unwind. Set to `0s` to disable.
+  rpcTimeout: 30m0s
   serviceAccount:
     # -- If `true`, create a new runner service account
     create: true

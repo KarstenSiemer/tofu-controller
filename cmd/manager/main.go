@@ -92,6 +92,7 @@ func main() {
 		rotationCheckFrequency    time.Duration
 		runnerGRPCPort            int
 		runnerCreationTimeout     time.Duration
+		runnerRPCTimeout          time.Duration
 		runnerGRPCMaxMessageSize  int
 		allowBreakTheGlass        bool
 		clusterDomain             string
@@ -118,6 +119,7 @@ func main() {
 		"The interval that the mTLS certificate rotator should check the certificate validity.")
 	flag.IntVar(&runnerGRPCPort, "runner-grpc-port", 30000, "The port which will be exposed on the runner pod for gRPC connections.")
 	flag.DurationVar(&runnerCreationTimeout, "runner-creation-timeout", 120*time.Second, "Timeout for creating a runner pod.")
+	flag.DurationVar(&runnerRPCTimeout, "runner-rpc-timeout", 30*time.Minute, "Default deadline applied to runner gRPC calls when the caller does not set its own. Caps how long a single RPC may block (e.g. on a vanished runner pod) before returning DeadlineExceeded and letting the reconcile unwind. Set to 0 to disable.")
 	flag.IntVar(&runnerGRPCMaxMessageSize, "runner-grpc-max-message-size", 4, "The maximum message size for gRPC connections in MiB.")
 	flag.BoolVar(&allowBreakTheGlass, "allow-break-the-glass", false, "Allow break the glass mode.")
 	flag.StringVar(&clusterDomain, "cluster-domain", "cluster.local", "The cluster domain used by the cluster.")
@@ -245,6 +247,7 @@ func main() {
 		CertRotator:               rotator,
 		RunnerGRPCPort:            runnerGRPCPort,
 		RunnerCreationTimeout:     runnerCreationTimeout,
+		RunnerRPCTimeout:          runnerRPCTimeout,
 		RunnerGRPCMaxMessageSize:  runnerGRPCMaxMessageSize,
 		AllowBreakTheGlass:        allowBreakTheGlass,
 		ClusterDomain:             clusterDomain,

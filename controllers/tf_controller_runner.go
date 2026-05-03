@@ -140,7 +140,7 @@ func (r *TerraformReconciler) getRunnerConnection(ctx context.Context, tlsSecret
 	const retryPolicy = `{
 "methodConfig": [{
   "name": [{"service": "runner.Runner"}],
-  "waitForReady": true,
+  "waitForReady": false,
   "retryPolicy": {
     "MaxAttempts": 4,
     "InitialBackoff": ".01s",
@@ -160,7 +160,35 @@ func (r *TerraformReconciler) getRunnerConnection(ctx context.Context, tlsSecret
 			grpc.MaxCallRecvMsgSize(maxMsgSize),
 			grpc.MaxCallSendMsgSize(maxMsgSize),
 		),
+		grpc.WithUnaryInterceptor(defaultDeadlineUnaryInterceptor(r.RunnerRPCTimeout)),
 	)
+}
+
+// defaultDeadlineUnaryInterceptor returns a gRPC unary client interceptor that
+// applies a default timeout to outgoing RPCs whose context has no deadline. A
+// caller that needs a tighter or looser deadline can still set its own with
+// context.WithTimeout / context.WithDeadline; the interceptor only fills in a
+// bound when none is set, so a hung runner cannot wedge a reconcile worker
+// indefinitely.
+func defaultDeadlineUnaryInterceptor(timeout time.Duration) grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string,
+		req, reply any,
+		cc *grpc.ClientConn,
+		invoker grpc.UnaryInvoker,
+		opts ...grpc.CallOption,
+	) error {
+		if timeout <= 0 {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+		if _, ok := ctx.Deadline(); ok {
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
 }
 
 func (r *TerraformReconciler) runnerPodSpec(terraform *infrav1.Terraform, tlsSecretName string) v1.PodSpec {

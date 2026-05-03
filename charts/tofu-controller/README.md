@@ -80,9 +80,10 @@ __Note__: If you need to use the `imagePullSecrets` it would be best to set `ser
 | rbac.create | bool | `true` | If `true`, create and use RBAC resources |
 | replicaCount | int | `1` | Number of tofu-controller pods to deploy |
 | resources | object | `{"limits":{"cpu":"1000m","memory":"1Gi"},"requests":{"cpu":"200m","memory":"64Mi"}}` | Resource limits and requests |
-| runner | object | `{"creationTimeout":"5m0s","grpc":{"maxMessageSize":4},"image":{"repository":"ghcr.io/flux-iac/tf-runner","tag":"v0.16.2"},"serviceAccount":{"allowedNamespaces":["flux-system"],"annotations":{},"create":true,"name":""}}` | Runner-specific configurations |
+| runner | object | `{"creationTimeout":"5m0s","grpc":{"maxMessageSize":4},"image":{"repository":"ghcr.io/flux-iac/tf-runner","tag":"v0.16.2"},"rpcTimeout":"30m0s","serviceAccount":{"allowedNamespaces":["flux-system"],"annotations":{},"create":true,"name":""}}` | Runner-specific configurations |
 | runner.creationTimeout | string | `"5m0s"` | Timeout for runner-creation (Controller) |
 | runner.grpc.maxMessageSize | int | `4` | Maximum GRPC message size (Controller) |
+| runner.rpcTimeout | string | `"30m0s"` | Default deadline for runner gRPC calls when the caller sets none. Caps how long a single RPC may block before returning DeadlineExceeded so the reconcile can unwind. Set to `0s` to disable. |
 | runner.image.repository | string | `"ghcr.io/flux-iac/tf-runner"` | Runner image repository |
 | runner.image.tag | string | `.Chart.AppVersion` | Runner image tag |
 | runner.serviceAccount.allowedNamespaces | list | `["flux-system"]` | List of namespaces that the runner may run within (in addition to namespace of the controller itself) |
